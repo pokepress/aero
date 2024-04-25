@@ -79,6 +79,8 @@ def main(args):
 
     pr_chunks = []
 
+    lr_segment_overlap_samples = int((sr/args.experiment.hr_sr) * SEGMENT_OVERLAP_SAMPLES)
+
     model.eval()
     pred_start = time.time()
     with torch.no_grad():
@@ -86,7 +88,7 @@ def main(args):
         for i, lr_chunk in enumerate(lr_chunks):
             pr_chunk = None
             if previous_chunk is not None:
-                combined_chunk = torch.cat((previous_chunk[...,-SEGMENT_OVERLAP_SAMPLES:], lr_chunk), 1)
+                combined_chunk = torch.cat((previous_chunk[...,-lr_segment_overlap_samples:], lr_chunk), 1)
                 pr_combined_chunk = model(combined_chunk.unsqueeze(0).to(device)).squeeze(0)
                 pr_chunk = pr_combined_chunk[...,SEGMENT_OVERLAP_SAMPLES:]
                 pr_chunks[-1][...,-SEGMENT_OVERLAP_SAMPLES:] = crossfade_and_blend(pr_chunks[-1][...,-SEGMENT_OVERLAP_SAMPLES:], pr_combined_chunk.cpu()[...,:SEGMENT_OVERLAP_SAMPLES] )
