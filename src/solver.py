@@ -81,12 +81,12 @@ class Solver(object):
         self.samples_dir = args.samples_dir  # Where to save samples
 
         self.num_prints = args.num_prints  # Number of times to log per epoch
-        self.dc_offset_loss_factor = args.dc_offset_loss_factor if 'dc_offset_loss_factor' in args else 25
-        self.l1_loss_factor = args.l1_loss_factor if 'l1_loss_factor' in args else 100
-        self.l2_loss_factor = args.l2_loss_factor if 'l2_loss_factor' in args else 100
-        self.melgan_loss_factor = args.melgan_loss_factor if 'melgan_loss_factor' in args else 0.005
-        self.msd_loss_factor = args.msd_loss_factor if 'msd_loss_factor' in args else 0.1
-        self.mpd_loss_factor = args.mpd_loss_factor if 'mpd_loss_factor' in args else 0.1
+        self.dc_offset_loss_factor = args.dc_offset_loss_factor if 'dc_offset_loss_factor' in args else 1
+        self.l1_loss_factor = args.l1_loss_factor if 'l1_loss_factor' in args else 1
+        self.l2_loss_factor = args.l2_loss_factor if 'l2_loss_factor' in args else 1
+        self.melgan_loss_factor = args.melgan_loss_factor if 'melgan_loss_factor' in args else 1
+        self.msd_loss_factor = args.msd_loss_factor if 'msd_loss_factor' in args else 1
+        self.mpd_loss_factor = args.mpd_loss_factor if 'mpd_loss_factor' in args else 1
 
         self.floatFormat = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
 

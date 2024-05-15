@@ -1,7 +1,7 @@
 # AERO
 **Audio Super Resolution in the Spectral Domain**
 
-This is a modified version of the official PyTorch implemenation of *AERO: Audio Super Resolution in the Spectral Domain*: [paper](https://arxiv.org/abs/2211.12232), [project page](https://pages.cs.huji.ac.il/adiyoss-lab/aero/).
+This is the official PyTorch implemenation of *AERO: Audio Super Resolution in the Spectral Domain*: [paper](https://arxiv.org/abs/2211.12232), [project page](https://pages.cs.huji.ac.il/adiyoss-lab/aero/).
 
 Checkpoint files are available! Details below.
 
@@ -138,11 +138,6 @@ To use pre-trained models, one can download checkpoints
 from [here](https://drive.google.com/drive/folders/1KuVJNkR7lZddvufmNsx-uAIluvb5XQ2L?usp=share_link).
 
 Thank you for [@fmac2000](https://github.com/fmac2000) for providing checkpoints for the 16->48 kHz configuration! They are now included in the provided checkpoint folder.
-
-## Additional models for this modified project
-
-[AM Radio Super Resolution](https://www.mediafire.com/folder/orqm1wxjyikjp/test-v1)
-[FM Radio Super Resolution](https://www.mediafire.com/folder/q986776pawybq/test-v1)
 
 To link to checkpoint when testing or predicting, override/set path under `checkpoint_file:<path>`
 in `conf/main_config.yaml.`  
