@@ -24,6 +24,7 @@ def run(args):
     from src.data.datasets import LrHrSet
     from src.solver import Solver
     logger.info(f'calling distrib.init')
+    
     distrib.init(args)
 
     _init_wandb_run(args)
@@ -59,7 +60,7 @@ def run(args):
     # Building datasets and loaders
     tr_dataset = LrHrSet(args.dset.train, args.experiment.lr_sr, args.experiment.hr_sr,
                          args.experiment.stride, args.experiment.segment, upsample=args.experiment.upsample,
-                         channels=channels)
+                         channels=channels, vary_volume=args.vary_volume)
     tr_loader = distrib.loader(tr_dataset, batch_size=args.experiment.batch_size, shuffle=True,
                                num_workers=args.num_workers)
 
@@ -93,16 +94,16 @@ def run(args):
         if 'adversarial' in args.experiment and args.experiment.adversarial:
             optimizer = torch.optim.Adam(
                 itertools.chain(models['generator'].parameters())
-                , lr=args.lr, betas=(0.9, args.beta2))
+                , lr=args.lr, betas=(args.beta1, args.beta2))
             disc_lr = args.disc_lr if 'disc_lr' in args else args.lr
             disc_optimizer = torch.optim.Adam(
                 itertools.chain(*[models[disc_name].parameters() for disc_name in
                                 args.experiment.discriminator_models]),
-                disc_lr, betas=(0.9, args.beta2))
+                disc_lr, betas=(args.beta1, args.beta2))
             optimizers.update({'optimizer': optimizer})
             optimizers.update({'disc_optimizer': disc_optimizer})
         else:
-            optimizer = torch.optim.Adam(models['generator'].parameters(), lr=args.lr, betas=(0.9, args.beta2))
+            optimizer = torch.optim.Adam(models['generator'].parameters(), lr=args.lr, betas=(args.beta1, args.beta2))
             optimizers.update({'optimizer': optimizer})
     else:
         logger.fatal('Invalid optimizer %s', args.optim)
