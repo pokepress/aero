@@ -129,13 +129,18 @@ class LrHrSet(Dataset):
         hr_length = segment * hr_sr if segment else None
 
         match_files(lr, hr)
+
+        stride_offset_ratio = random.uniform(0,1)
+
         self.lr_set = Audioset(lr, sample_rate=lr_sr, length=lr_length, stride=lr_stride, pad=pad, channels=channels,
-                               with_path=with_path)
+                               with_path=with_path, stride_offset_ratio=stride_offset_ratio)
         self.hr_set = Audioset(hr, sample_rate=hr_sr, length=hr_length, stride=hr_stride, pad=pad, channels=channels,
-                               with_path=with_path)
+                               with_path=with_path, stride_offset_ratio=stride_offset_ratio)
         assert len(self.hr_set) == len(self.lr_set)
 
     def __getitem__(self, index):
+        self.update_stride_offset()
+
         if self.with_path:
             hr_sig, hr_path = self.hr_set[index]
             lr_sig, lr_path = self.lr_set[index]
@@ -165,6 +170,12 @@ class LrHrSet(Dataset):
 
     def __len__(self):
         return len(self.lr_set)
+    
+    def update_stride_offset(self):
+        stride_offset_ratio = random.uniform(0,1)
+        self.lr_set.update_stride_offset(stride_offset_ratio)
+        self.hr_set.update_stride_offset(stride_offset_ratio)
+
 
 
 if __name__ == "__main__":
