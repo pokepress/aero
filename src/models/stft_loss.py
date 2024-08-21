@@ -24,7 +24,7 @@ def stft(x, fft_size, hop_size, win_length, window):
     imag = x_stft[..., 1]
 
     # NOTE(kan-bayashi): clamp is needed to avoid nan or inf
-    return torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7)).transpose(2, 1)
+    return torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7)).transpose(2, 1), torch.atan2(imag, real).transpose(2, 1)
 
 
 class SpectralConvergengeLoss(torch.nn.Module):
@@ -33,8 +33,9 @@ class SpectralConvergengeLoss(torch.nn.Module):
     def __init__(self):
         """Initilize spectral convergence loss module."""
         super(SpectralConvergengeLoss, self).__init__()
+        self.freq_weights = None
 
-    def forward(self, x_mag, y_mag):
+    def forward(self, x_mag, y_mag, x_phase, y_phase):
         """Calculate forward propagation.
         Args:
             x_mag (Tensor): Magnitude spectrogram of predicted signal (B, #frames, #freq_bins).
@@ -42,7 +43,9 @@ class SpectralConvergengeLoss(torch.nn.Module):
         Returns:
             Tensor: Spectral convergence loss value.
         """
-        return torch.norm(y_mag - x_mag, p="fro") / torch.norm(y_mag, p="fro")
+        mag_conv_loss = torch.norm(y_mag - x_mag, p="fro") / torch.norm(y_mag, p="fro")
+        phase_conv_loss = torch.mean(2* torch.asin(torch.sqrt(torch.sin((x_phase - y_phase)/2)**2)))
+        return mag_conv_loss + (phase_conv_loss.item()/5)
 
 
 class LogSTFTMagnitudeLoss(torch.nn.Module):
@@ -85,9 +88,9 @@ class STFTLoss(torch.nn.Module):
             Tensor: Spectral convergence loss value.
             Tensor: Log STFT magnitude loss value.
         """
-        x_mag = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
-        y_mag = stft(y, self.fft_size, self.shift_size, self.win_length, self.window)
-        sc_loss = self.spectral_convergenge_loss(x_mag, y_mag)
+        x_mag, x_phase = stft(x, self.fft_size, self.shift_size, self.win_length, self.window)
+        y_mag, y_phase = stft(y, self.fft_size, self.shift_size, self.win_length, self.window)
+        sc_loss = self.spectral_convergenge_loss(x_mag, y_mag, x_phase, y_phase)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
 
         return sc_loss, mag_loss
