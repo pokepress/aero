@@ -143,7 +143,7 @@ Thank you for [@fmac2000](https://github.com/fmac2000) for providing checkpoints
 ## Additional models for this modified project
 
 [AM Radio Super Resolution](https://www.mediafire.com/folder/orqm1wxjyikjp/test-v1)
-[FM Radio Super Resolution](https://www.mediafire.com/folder/q986776pawybq/test-v1)
+[FM Radio Super Resolution](https://huggingface.co/sereich/FMRadioSR)
 
 To link to checkpoint when testing or predicting, override/set path under `checkpoint_file:<path>`
 in `conf/main_config.yaml.`  
