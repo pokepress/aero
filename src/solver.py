@@ -93,6 +93,10 @@ class Solver(object):
         if 'stft' in self.args.losses:
             self.mrstftloss = MultiResolutionSTFTLoss(factor_sc=args.stft_sc_factor,
                                                   factor_mag=args.stft_mag_factor).to(self.device)
+        if 'stftcustom' in self.args.losses:
+            self.mrstftlosscustom = MultiResolutionSTFTLoss(factor_sc=args.stft_sc_factor,
+                                                  factor_mag=args.stft_mag_factor,start_interval=args.stftcustom_start,
+                                                  end_interval=args.stftcustom_end).to(self.device)
 
         if 'discriminator_model' in self.args.experiment and \
                 self.args.experiment.discriminator_model == 'hifi':
@@ -456,6 +460,9 @@ class Solver(object):
             if 'stft' in self.args.losses:
                 stft_loss = self._get_stft_loss(pr_time, hr_time)
                 losses['generator'].update({'stft': stft_loss})
+            if 'stftcustom' in self.args.losses:
+                stftcustom_loss = self._get_stftcustom_loss(pr_time, hr_time)
+                losses['generator'].update({'stftcustom': stftcustom_loss})
 
             if self.adversarial_mode:
                 if 'msd_melgan' in self.args.experiment.discriminator_models:
@@ -492,6 +499,14 @@ class Solver(object):
             )
         stft_loss = sc_loss + mag_loss
         return stft_loss
+    
+    def _get_stftcustom_loss(self, pr, hr):
+        sc_loss, mag_loss = self.mrstftlosscustom(
+            pr.reshape([pr.shape[0], pr.shape[1] * pr.shape[2]]), 
+            hr.reshape([hr.shape[0], hr.shape[1] * hr.shape[2]])
+            )
+        stftcustom_loss = sc_loss + mag_loss
+        return stftcustom_loss
 
     def _get_melgan_adversarial_loss(self, pr, hr):
 
@@ -510,11 +525,17 @@ class Solver(object):
 
     def _get_melgan_discriminator_loss(self, discriminator_fake, discriminator_real):
         discriminator_loss = 0
-        for scale in discriminator_fake:
-            discriminator_loss += self.melgan_loss_factor * F.relu(1 + scale[-1]).mean()
+        #for scale in discriminator_fake:
+        #    discriminator_loss += self.melgan_loss_factor * F.relu(1 + scale[-1]).mean()
 
-        for scale in discriminator_real:
-            discriminator_loss += self.melgan_loss_factor * F.relu(1 - scale[-1]).mean()
+        #for scale in discriminator_real:
+        #    discriminator_loss += self.melgan_loss_factor * F.relu(1 - scale[-1]).mean()
+
+        for dg, dr in zip(discriminator_fake, discriminator_real):
+           discriminator_loss += self.melgan_loss_factor * torch.mean(
+               torch.sigmoid(dr[-1])-torch.sigmoid(dg[-1])
+               )
+        
         return discriminator_loss
 
     def _get_melgan_generator_loss(self, discriminator_fake, discriminator_real):
@@ -529,7 +550,7 @@ class Solver(object):
 
         adversarial_loss = 0
         for scale in discriminator_fake:
-            adversarial_loss += self.melgan_loss_factor * F.relu(1 - scale[-1]).mean()
+            adversarial_loss += -self.melgan_loss_factor * torch.mean(torch.sigmoid(scale[-1]))
 
         if 'only_adversarial_loss' in self.args.experiment and self.args.experiment.only_adversarial_loss:
             return {'adversarial': adversarial_loss}
