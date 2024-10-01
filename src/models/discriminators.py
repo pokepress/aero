@@ -238,7 +238,7 @@ def generator_loss(disc_outputs):
     loss = 0
     # gen_losses = []
     for dg in disc_outputs:
-        l = -torch.mean(dg)
+        l = -torch.mean(torch.sigmoid(dg))
         # gen_losses.append(l)
         loss += l
 
