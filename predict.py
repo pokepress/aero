@@ -79,8 +79,8 @@ def main(args):
 
     pr_chunks = []
 
-    lr_segment_overlap_samples = int(sr*SEGMENT_OVERLAP_RATIO) 
-    hr_segment_overlap_samples = int(args.experiment.hr_sr*SEGMENT_OVERLAP_RATIO)
+    lr_segment_overlap_samples = int(sr*SEGMENT_OVERLAP_RATIO*SEGMENT_DURATION_SEC) 
+    hr_segment_overlap_samples = int(args.experiment.hr_sr*SEGMENT_OVERLAP_RATIO*SEGMENT_DURATION_SEC)
 
     model.eval()
     pred_start = time.time()
