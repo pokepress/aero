@@ -16,6 +16,8 @@ def stft(x, fft_size, hop_size, win_length, window, start_interval=0.0, end_inte
         hop_size (int): Hop size.
         win_length (int): Window length.
         window (str): Window function type.
+        start_interval (float): where to start (between 0 hz and the nyquist frequency)
+        end_interval (float): where to end (between 0 hz and the nyquist frequency)
     Returns:
         Tensor: Magnitude spectrogram (B, #frames, fft_size // 2 + 1).
     """
@@ -38,10 +40,11 @@ def stft(x, fft_size, hop_size, win_length, window, start_interval=0.0, end_inte
 class SpectralConvergengeLoss(torch.nn.Module):
     """Spectral convergence loss module."""
 
-    def __init__(self):
+    def __init__(self, magnitude_weight_shift=0.0):
         """Initilize spectral convergence loss module."""
         super(SpectralConvergengeLoss, self).__init__()
         self.freq_weights = None
+        self.magnitude_weight_shift = magnitude_weight_shift
 
     def forward(self, x_mag, y_mag, x_phase, y_phase):
         """Calculate forward propagation.
@@ -53,7 +56,14 @@ class SpectralConvergengeLoss(torch.nn.Module):
         Returns:
             Tensor: Spectral convergence loss value.
         """
-        mag_conv_loss = torch.norm(y_mag - x_mag, p="fro") / torch.norm(y_mag, p="fro")
+        if self.magnitude_weight_shift != 0.0:
+            mag_diff = torch.where(y_mag > x_mag,
+                                   (1+self.magnitude_weight_shift)*(y_mag - x_mag), 
+                                   (1-self.magnitude_weight_shift)*(y_mag - x_mag)
+                                   )
+        else:
+            mag_diff = y_mag - x_mag
+        mag_conv_loss = torch.norm(mag_diff, p="fro") / torch.norm(y_mag, p="fro")
         phase_conv_loss = torch.mean(2* torch.asin(torch.sqrt(torch.sin((x_phase - y_phase)/2)**2)))
         return mag_conv_loss + (phase_conv_loss.item()/5)
 
@@ -61,9 +71,10 @@ class SpectralConvergengeLoss(torch.nn.Module):
 class LogSTFTMagnitudeLoss(torch.nn.Module):
     """Log STFT magnitude loss module."""
 
-    def __init__(self):
+    def __init__(self, magnitude_weight_shift=0.0):
         """Initilize los STFT magnitude loss module."""
         super(LogSTFTMagnitudeLoss, self).__init__()
+        self.magnitude_weight_shift = magnitude_weight_shift
 
     def forward(self, x_mag, y_mag):
         """Calculate forward propagation.
@@ -73,21 +84,31 @@ class LogSTFTMagnitudeLoss(torch.nn.Module):
         Returns:
             Tensor: Log STFT magnitude loss value.
         """
-        return F.l1_loss(torch.log(y_mag), torch.log(x_mag))
+        if self.magnitude_weight_shift != 0.0:
+            log_x_mag = torch.log(x_mag)
+            log_y_mag = torch.log(y_mag)
+            log_mag_diff = torch.abs(torch.where(log_y_mag > log_x_mag,
+                                   (1+self.magnitude_weight_shift)*(log_y_mag - log_x_mag), 
+                                   (1-self.magnitude_weight_shift)*(log_y_mag - log_x_mag)
+                                   ))
+            return torch.mean(log_mag_diff)
+        else:
+            return F.l1_loss(torch.log(y_mag), torch.log(x_mag))
 
 
 class STFTLoss(torch.nn.Module):
     """STFT loss module."""
 
-    def __init__(self, fft_size=1024, shift_size=120, win_length=600, window="hann_window", start_interval=0.0, end_interval=1.0):
+    def __init__(self, fft_size=1024, shift_size=120, win_length=600, window="hann_window", start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0):
         """Initialize STFT loss module."""
         super(STFTLoss, self).__init__()
         self.fft_size = fft_size
         self.shift_size = shift_size
         self.win_length = win_length
         self.register_buffer("window", getattr(torch, window)(win_length))
-        self.spectral_convergenge_loss = SpectralConvergengeLoss()
-        self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss()
+        self.magnitude_weight_shift = magnitude_weight_shift
+        self.spectral_convergenge_loss = SpectralConvergengeLoss(magnitude_weight_shift)
+        self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss(magnitude_weight_shift)
         self.start_interval = start_interval
         self.end_interval = end_interval
 
@@ -116,7 +137,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
                  hop_sizes=[127, 307, 241, 401, 547, 577],
                  win_lengths=[601, 1399, 1249, 4999, 1601, 5167],
                  window="hann_window", factor_sc=0.1, factor_mag=0.1,
-                 start_interval=0.0, end_interval=1.0):
+                 start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0):
         """Initialize Multi resolution STFT loss module.
         Args:
             fft_sizes (list): List of FFT sizes.
@@ -124,12 +145,16 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
             win_lengths (list): List of window lengths.
             window (str): Window function type.
             factor (float): a balancing factor across different losses.
+            start_interval (float): where to start (between 0 hz and the nyquist frequency)
+            end_interval (float): where to end (between 0 hz and the nyquist frequency)
+            magnitude_weight_shift (float): if non-zero, increases loss for predicted magnititudes that are too low (positive) or high (negative)
         """
         super(MultiResolutionSTFTLoss, self).__init__()
         assert len(fft_sizes) == len(hop_sizes) == len(win_lengths)
+        assert magnitude_weight_shift > -1.0, magnitude_weight_shift < 1.0
         self.stft_losses = torch.nn.ModuleList()
         for fs, ss, wl in zip(fft_sizes, hop_sizes, win_lengths):
-            self.stft_losses += [STFTLoss(fs, ss, wl, window, start_interval, end_interval)]
+            self.stft_losses += [STFTLoss(fs, ss, wl, window, start_interval, end_interval, magnitude_weight_shift)]
         self.factor_sc = factor_sc
         self.factor_mag = factor_mag
 
