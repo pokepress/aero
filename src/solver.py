@@ -92,11 +92,11 @@ class Solver(object):
 
         if 'stft' in self.args.losses:
             self.mrstftloss = MultiResolutionSTFTLoss(factor_sc=args.stft_sc_factor,
-                                                  factor_mag=args.stft_mag_factor).to(self.device)
+                                                  factor_mag=args.stft_mag_factor,magnitude_weight_shift=args.stft_mag_weight_shift).to(self.device)
         if 'stftcustom' in self.args.losses:
             self.mrstftlosscustom = MultiResolutionSTFTLoss(factor_sc=args.stft_sc_factor,
                                                   factor_mag=args.stft_mag_factor,start_interval=args.stftcustom_start,
-                                                  end_interval=args.stftcustom_end).to(self.device)
+                                                  end_interval=args.stftcustom_end,magnitude_weight_shift=args.stft_mag_weight_shift).to(self.device)
 
         if 'discriminator_model' in self.args.experiment and \
                 self.args.experiment.discriminator_model == 'hifi':
