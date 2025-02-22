@@ -69,10 +69,13 @@ class Solver(object):
         self.cross_valid = args.cross_valid
         self.cross_valid_every = args.cross_valid_every
         self.checkpoint = args.checkpoint
+        self.pretrained = args.pretrained if 'pretrained' in args else False
         if self.checkpoint:
             self.checkpoint_file = Path(args.checkpoint_file)
             self.best_file = Path(args.best_file)
             logger.debug("Checkpoint will be saved to %s", self.checkpoint_file.resolve())
+        if self.pretrained:
+            self.pretrained_file = Path(args.pretrained_file)
         self.history_file = args.history_file
 
         self.best_states = None
@@ -116,12 +119,13 @@ class Solver(object):
         if load_best:
             for name, model_package in package[SERIALIZE_KEY_BEST_STATES][SERIALIZE_KEY_MODELS].items():
                 self.models[name].load_state_dict(model_package[SERIALIZE_KEY_STATE])
-        else:
+        elif SERIALIZE_KEY_MODELS in package and SERIALIZE_KEY_OPTIMIZERS in package:
             for name, model_package in package[SERIALIZE_KEY_MODELS].items():
                 self.models[name].load_state_dict(model_package[SERIALIZE_KEY_STATE])
             for name, opt_package in package[SERIALIZE_KEY_OPTIMIZERS].items():
                 self.optimizers[name].load_state_dict(opt_package)
-
+        elif SERIALIZE_KEY_STATE in package: #Pretrained generator model
+            self.models['generator'].load_state_dict(package[SERIALIZE_KEY_STATE])
 
     def _reset(self):
         """_reset."""
@@ -135,14 +139,18 @@ class Solver(object):
             load_from = self.continue_from
             load_best = self.args.continue_best
             keep_history = self.args.keep_history
+        elif self.pretrained and self.pretrained_file.exists():
+            load_from = self.pretrained_file
+            keep_history = False
 
         if load_from:
-            logger.info(f'Loading checkpoint model: {load_from}')
+            logger.info(f'Loading model information from: {load_from}')
             package = torch.load(load_from, 'cpu')
             self._load(package, load_best)
             if keep_history:
                 self.history = package[SERIALIZE_KEY_HISTORY]
-            self.best_states = package[SERIALIZE_KEY_BEST_STATES]
+            if SERIALIZE_KEY_BEST_STATES in package:
+                self.best_states = package[SERIALIZE_KEY_BEST_STATES]
 
 
     def train(self):

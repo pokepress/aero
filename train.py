@@ -99,7 +99,7 @@ def run(args):
             disc_optimizer = torch.optim.Adam(
                 itertools.chain(*[models[disc_name].parameters() for disc_name in
                                 args.experiment.discriminator_models]),
-                disc_lr, betas=(args.beta1, args.beta2))
+                disc_lr, betas=(args.beta1, args.beta2),maximize=True)
             optimizers.update({'optimizer': optimizer})
             optimizers.update({'disc_optimizer': disc_optimizer})
         else:
