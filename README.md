@@ -1,6 +1,8 @@
 # AERO
 **Audio Super Resolution in the Spectral Domain**
 
+[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/aero-audio-super-resolution-in-the-spectral/bandwidth-extension-on-vctk)](https://paperswithcode.com/sota/bandwidth-extension-on-vctk?p=aero-audio-super-resolution-in-the-spectral)
+
 This is the official PyTorch implemenation of *AERO: Audio Super Resolution in the Spectral Domain*: [paper](https://arxiv.org/abs/2211.12232), [project page](https://pages.cs.huji.ac.il/adiyoss-lab/aero/).
 
 Checkpoint files are available! Details below.
