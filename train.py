@@ -60,7 +60,8 @@ def run(args):
     # Building datasets and loaders
     tr_dataset = LrHrSet(args.dset.train, args.experiment.lr_sr, args.experiment.hr_sr,
                          args.experiment.stride, args.experiment.segment, upsample=args.experiment.upsample,
-                         channels=channels, vary_volume=args.vary_volume)
+                         channels=channels, vary_volume=args.vary_volume, randomize_phase=args.randomize_phase,
+                         swap_channels=args.swap_channels)
     tr_loader = distrib.loader(tr_dataset, batch_size=args.experiment.batch_size, shuffle=True,
                                num_workers=args.num_workers)
 
@@ -92,25 +93,26 @@ def run(args):
     optimizers = {}
     if args.optim == "adam":
         if 'adversarial' in args.experiment and args.experiment.adversarial:
-            optimizer = torch.optim.Adam(
+            optimizer = torch.optim.AdamW(
                 itertools.chain(models['generator'].parameters())
                 , lr=args.lr, betas=(args.beta1, args.beta2))
             disc_lr = args.disc_lr if 'disc_lr' in args else args.lr
-            disc_optimizer = torch.optim.Adam(
+            disc_optimizer = torch.optim.AdamW(
                 itertools.chain(*[models[disc_name].parameters() for disc_name in
                                 args.experiment.discriminator_models]),
-                disc_lr, betas=(args.beta1, args.beta2),maximize=True)
+                disc_lr, betas=(args.beta1, args.beta2),
+                maximize=args.wgan_enabled if 'wgan_enabled' in args else False)
             optimizers.update({'optimizer': optimizer})
             optimizers.update({'disc_optimizer': disc_optimizer})
         else:
-            optimizer = torch.optim.Adam(models['generator'].parameters(), lr=args.lr, betas=(args.beta1, args.beta2))
+            optimizer = torch.optim.AdamW(models['generator'].parameters(), lr=args.lr, betas=(args.beta1, args.beta2))
             optimizers.update({'optimizer': optimizer})
     else:
         logger.fatal('Invalid optimizer %s', args.optim)
         os._exit(1)
 
     # Construct Solver
-    solver = Solver(data, models, optimizers, args)
+    solver = Solver(data, models, optimizers, args, channels)
     solver.train()
 
     distrib.close()

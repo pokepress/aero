@@ -15,6 +15,9 @@ show: 0   # just show the model and its size and exit
 log_results: true
 
 vary_volume: true
+randomize_phase: true
+swap_channels: true # Stereo only
+
 # Checkpointing, by default automatically load last checkpoint
 checkpoint: true
 continue_from: '' # Path the a checkpoint.th file to start from.
@@ -24,6 +27,7 @@ pretrained: false
 continue_best: false  # continue from best, not last state if continue_from is set.
 restart: false # Ignore existing checkpoints
 checkpoint_file: checkpoint.th
+pretrained_file: ''
 best_file: best.th  # will contain only best model at any point
 history_file: history.json
 test_results_file: test_results.json
@@ -68,6 +72,10 @@ stft_mag_factor: .5
 epochs: 125
 
 stft_mag_weight_shift: 0.0
+optimization_ratio: 1
+stft_trans_factor: 0.32
+wgan_enabled: false
+force_float32: false
 # Experiment launching, distributed
 ddp: false
 ddp_backend: nccl

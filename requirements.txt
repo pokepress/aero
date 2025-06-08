@@ -5,6 +5,7 @@ hyperlink==17.3.1
 HyperPyYAML==1.0.0
 numpy
 opencv-python
+soundfile==0.12.1
 soundfile
 sox
 torch==2.4.1

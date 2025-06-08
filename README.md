@@ -10,12 +10,11 @@ Checkpoint files are available! Details below.
 Install requirements specified in `requirements.txt`:  
 ```pip install -r requirements.txt```
 
-We ran our code on CUDA/12.4, we therefore installed pytorch/torchvision/torchaudio with the following:
+We ran our code on CUDA/11.8, we therefore installed pytorch/torchvision/torchaudio with the following:
 
 ```
-pip install torch==2.4.1+cu124 torchvision==0.19.1 torchaudio==2.4.1 --index-url https://download.pytorch.org/whl/cu124
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
-Torch 2.3.1 appears to have an autocast issue that prevents it from working with bfloat16, at least for this project.
 
 Our code uses [hydra](https://hydra.cc/) to set parameters to different experiments.
 

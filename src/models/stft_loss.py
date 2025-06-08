@@ -65,7 +65,7 @@ class SpectralConvergengeLoss(torch.nn.Module):
             mag_diff = y_mag - x_mag
         mag_conv_loss = torch.norm(mag_diff, p="fro") / torch.norm(y_mag, p="fro")
         phase_conv_loss = torch.mean(2* torch.asin(torch.sqrt(torch.sin((x_phase - y_phase)/2)**2)))
-        return mag_conv_loss + (phase_conv_loss.item()/5)
+        return mag_conv_loss + (phase_conv_loss.item()/3)
 
 
 class LogSTFTMagnitudeLoss(torch.nn.Module):
@@ -94,6 +94,28 @@ class LogSTFTMagnitudeLoss(torch.nn.Module):
             return torch.mean(log_mag_diff)
         else:
             return F.l1_loss(torch.log(y_mag), torch.log(x_mag))
+        
+class TransientLoss(torch.nn.Module):
+    """Transient loss module."""
+
+    def __init__(self):
+        """Initilize transient loss module."""
+        super(TransientLoss, self).__init__()
+        self.freq_weights = None
+
+    def forward(self, x_mag, y_mag):
+        """Calculate forward propagation.
+        Args:
+            x_mag (Tensor): Magnitude spectrogram of predicted signal (B, #frames, #freq_bins).
+            y_mag (Tensor): Magnitude spectrogram of groundtruth signal (B, #frames, #freq_bins).
+        Returns:
+            Tensor: Transient loss value.
+        """
+
+        x_grad = torch.gradient(x_mag,dim=1)
+        y_grad = torch.gradient(y_mag,dim=1)
+
+        return F.mse_loss(x_grad[0], y_grad[0])
 
 
 class STFTLoss(torch.nn.Module):
@@ -109,6 +131,7 @@ class STFTLoss(torch.nn.Module):
         self.magnitude_weight_shift = magnitude_weight_shift
         self.spectral_convergenge_loss = SpectralConvergengeLoss(magnitude_weight_shift)
         self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss(magnitude_weight_shift)
+        self.transient_loss = TransientLoss()
         self.start_interval = start_interval
         self.end_interval = end_interval
 
@@ -125,8 +148,9 @@ class STFTLoss(torch.nn.Module):
         y_mag, y_phase = stft(y, self.fft_size, self.shift_size, self.win_length, self.window, self.start_interval, self.end_interval)
         sc_loss = self.spectral_convergenge_loss(x_mag, y_mag, x_phase, y_phase)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
+        trans_loss = self.transient_loss(x_mag, y_mag)
 
-        return sc_loss, mag_loss
+        return sc_loss, mag_loss, trans_loss
 
 
 class MultiResolutionSTFTLoss(torch.nn.Module):
@@ -136,7 +160,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
                  fft_sizes=[1531, 2557, 4099, 4999, 3001, 6037],
                  hop_sizes=[127, 307, 241, 401, 547, 577],
                  win_lengths=[601, 1399, 1249, 4999, 1601, 5167],
-                 window="hann_window", factor_sc=0.1, factor_mag=0.1,
+                 window="hann_window", factor_sc=0.1, factor_mag=0.1, factor_trans=0.1,
                  start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0):
         """Initialize Multi resolution STFT loss module.
         Args:
@@ -157,6 +181,7 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
             self.stft_losses += [STFTLoss(fs, ss, wl, window, start_interval, end_interval, magnitude_weight_shift)]
         self.factor_sc = factor_sc
         self.factor_mag = factor_mag
+        self.factor_trans = factor_trans
 
     def forward(self, x, y):
         """Calculate forward propagation.
@@ -169,11 +194,14 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
         """
         sc_loss = 0.0
         mag_loss = 0.0
+        trans_loss = 0.0
         for f in self.stft_losses:
-            sc_l, mag_l = f(x, y)
+            sc_l, mag_l, trans_l = f(x, y)
             sc_loss += sc_l
             mag_loss += mag_l
+            trans_loss += trans_l
         sc_loss /= len(self.stft_losses)
         mag_loss /= len(self.stft_losses)
+        trans_loss /= len(self.stft_losses)
 
-        return self.factor_sc*sc_loss, self.factor_mag*mag_loss
+        return self.factor_sc*sc_loss, self.factor_mag*mag_loss, self.factor_trans*trans_loss
