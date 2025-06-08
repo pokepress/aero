@@ -64,9 +64,10 @@ def serialize(models, optimizers, history, best_states, args, save_latest_genera
     # Saving only the latest best model.
     models = package[SERIALIZE_KEY_MODELS]
     for model_name, best_state in package[SERIALIZE_KEY_BEST_STATES].items():
-        models[model_name][SERIALIZE_KEY_STATE] = best_state
-        model_filename = model_name + '_' + best_file.name
-        tmp_path = os.path.join(best_file.parent, model_filename) + ".tmp"
-        torch.save(models[model_name], tmp_path)
-        model_path = Path(best_file.parent / model_filename)
-        os.replace(tmp_path, model_path)
+        if model_name in models:
+            models[model_name][SERIALIZE_KEY_STATE] = best_state
+            model_filename = model_name + '_' + best_file.name
+            tmp_path = os.path.join(best_file.parent, model_filename) + ".tmp"
+            torch.save(models[model_name], tmp_path)
+            model_path = Path(best_file.parent / model_filename)
+            os.replace(tmp_path, model_path)

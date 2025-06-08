@@ -219,26 +219,33 @@ def feature_loss(fmap_r, fmap_g):
     return loss / total_n_layers
 
 
-def discriminator_loss(disc_real_outputs, disc_generated_outputs):
+def discriminator_loss(disc_real_outputs, disc_generated_outputs, wgan_enabled=False):
     loss = 0
     # r_losses = []
     # g_losses = []
     for dr, dg in zip(disc_real_outputs, disc_generated_outputs):
-        #r_loss = torch.mean((1 - dr) ** 2)
-        #g_loss = torch.mean(dg ** 2)
-        #loss += (r_loss + g_loss)
-        loss += torch.mean(torch.sigmoid(dr)-torch.sigmoid(dg))
+        if wgan_enabled:
+            loss += torch.mean(torch.sigmoid(dr)-torch.sigmoid(dg))
+        else:
+            r_loss = torch.mean((1 - dr) ** 2)
+            g_loss = torch.mean(dg ** 2)
+            loss += (r_loss + g_loss)
+        
         # r_losses.append(r_loss.item())
         # g_losses.append(g_loss.item())
 
     return loss  # , r_losses, g_losses
 
 
-def generator_loss(disc_outputs):
+def generator_loss(disc_outputs, wgan_enabled=False):
     loss = 0
     # gen_losses = []
+    loss_floor = torch.sigmoid(torch.min(torch.cat(disc_outputs, dim=1)))/2
     for dg in disc_outputs:
-        l = -torch.mean(torch.sigmoid(dg))
+        if wgan_enabled:
+            l = -(torch.mean(torch.sigmoid(dg)).sub(loss_floor))
+        else:
+            l = torch.mean((1 - dg) ** 2)
         # gen_losses.append(l)
         loss += l
 
