@@ -301,7 +301,6 @@ class Solver(object):
                     serialize(self.models, self.optimizers, self.history, self.best_states, self.args)
                     logger.debug("Checkpoint saved to %s", self.checkpoint_file.resolve())
 
-            if epoch < self.epochs - 1:
 
     def _run_one_epoch(self, epoch, cross_valid=False):
         total_losses = {}
