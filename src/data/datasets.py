@@ -84,7 +84,8 @@ class PrHrSet(Dataset):
 class LrHrSet(Dataset):
     def __init__(self, json_dir, lr_sr, hr_sr, stride=None, segment=None,
                  pad=True, with_path=False, stft=False, win_len=64, hop_len=16, n_fft=4096, complex_as_channels=True,
-                 upsample=True, channels=1, vary_volume=False, randomize_phase=False, swap_channels=False):
+                 upsample=True, channels=1, vary_volume=False, randomize_phase=False, swap_channels=False,
+                 mixup=False):
         """__init__.
         :param json_dir: directory containing both hr.json and lr.json
         :param stride: the stride used for splitting audio sequences in seconds
@@ -108,6 +109,7 @@ class LrHrSet(Dataset):
         self.vary_volume = vary_volume
         self.randomize_phase = randomize_phase
         self.swap_channels = swap_channels
+        self.mixup = mixup
 
         if self.stft:
             self.window_length = int(self.hr_sr / 1000 * win_len)  # 64 ms
@@ -167,6 +169,13 @@ class LrHrSet(Dataset):
             lr_swapped.index_copy_(0, swap_index, lr_sig)
             hr_sig=hr_swapped
             lr_sig=lr_swapped
+        if self.mixup and random.randint(0, 3) == 3:
+            mix_ratio = random.uniform(0.4, 0.6)
+            mix_index = random.randint(0, len(self.hr_set) -1)
+            hr_mixed = torch.add(hr_sig * mix_ratio, (1-mix_ratio)*self.hr_set[mix_index])
+            lr_mixed = torch.add(lr_sig * mix_ratio, (1-mix_ratio)*self.lr_set[mix_index])
+            hr_sig=hr_mixed
+            lr_sig=lr_mixed
 
 
         if self.stft:
