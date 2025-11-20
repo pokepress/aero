@@ -17,6 +17,7 @@ log_results: true
 vary_volume: true
 randomize_phase: true
 swap_channels: true # Stereo only
+mixup: true
 
 # Checkpointing, by default automatically load last checkpoint
 checkpoint: true

@@ -5,6 +5,7 @@ This code is based on Facebook's HDemucs code: https://github.com/facebookresear
 """STFT-based Loss modules."""
 
 import torch
+import math
 import torch.nn.functional as F
 
 
@@ -49,10 +50,10 @@ class SpectralConvergengeLoss(torch.nn.Module):
     def forward(self, x_mag, y_mag, x_phase, y_phase):
         """Calculate forward propagation.
         Args:
-            x_mag (Tensor): Magnitude spectrogram of predicted signal (B, #freq_bins, #frames).
-            y_mag (Tensor): Magnitude spectrogram of groundtruth signal (B, #freq_bins, #frames).
-            x_phase (Tensor): Phase spectrogram of predicted signal (B, #freq_bins, #frames).
-            y_phase (Tensor): Phase spectrogram of groundtruth signal (B, #freq_bins, #frames).
+            x_mag (Tensor): Magnitude spectrogram of predicted signal (B, #frames, #freq_bins).
+            y_mag (Tensor): Magnitude spectrogram of groundtruth signal (B, #frames, #freq_bins).
+            x_phase (Tensor): Phase spectrogram of predicted signal (B, #frames, #freq_bins).
+            y_phase (Tensor): Phase spectrogram of groundtruth signal (B, #frames, #freq_bins).
         Returns:
             Tensor: Spectral convergence loss value.
         """
@@ -63,9 +64,12 @@ class SpectralConvergengeLoss(torch.nn.Module):
                                    )
         else:
             mag_diff = y_mag - x_mag
-        mag_conv_loss = torch.norm(mag_diff, p="fro") / torch.norm(y_mag, p="fro")
-        phase_conv_loss = torch.mean(2* torch.asin(torch.sqrt(torch.sin((x_phase - y_phase)/2)**2)))
-        return mag_conv_loss + (phase_conv_loss.item()/3)
+            
+        mag_conv_loss = torch.mean(torch.linalg.norm(mag_diff, dim=2, keepdim=True) 
+                                   / torch.clamp(torch.linalg.norm(y_mag, dim=2, keepdim=True),1e-2,None))
+        phase_conv_loss = torch.mean(torch.maximum(x_mag,y_mag)*torch.abs(torch.sin((x_phase - y_phase)/2)))
+        
+        return mag_conv_loss + (phase_conv_loss.item()*math.pi)
 
 
 class LogSTFTMagnitudeLoss(torch.nn.Module):
@@ -84,16 +88,16 @@ class LogSTFTMagnitudeLoss(torch.nn.Module):
         Returns:
             Tensor: Log STFT magnitude loss value.
         """
-        if self.magnitude_weight_shift != 0.0:
-            log_x_mag = torch.log(x_mag)
-            log_y_mag = torch.log(y_mag)
-            log_mag_diff = torch.abs(torch.where(log_y_mag > log_x_mag,
-                                   (1+self.magnitude_weight_shift)*(log_y_mag - log_x_mag), 
-                                   (1-self.magnitude_weight_shift)*(log_y_mag - log_x_mag)
-                                   ))
-            return torch.mean(log_mag_diff)
-        else:
-            return F.l1_loss(torch.log(y_mag), torch.log(x_mag))
+        quantile_mag_y = torch.clamp(torch.quantile(y_mag,0.9,dim=2,keepdim=True)[0], 1e-3, None)
+        max_mag_y = torch.max(y_mag,dim=2, keepdim=True)[0]
+        scale_mag_y = torch.clamp(torch.maximum(quantile_mag_y,max_mag_y/16),1e-1,None)
+
+        mag_diff = torch.abs(torch.where(y_mag > x_mag,
+                                (1+self.magnitude_weight_shift)*(y_mag - x_mag), 
+                                (1-self.magnitude_weight_shift)*(y_mag - x_mag)
+                                ))
+        return torch.mean(torch.pow(mag_diff/scale_mag_y, 1.3))
+
         
 class TransientLoss(torch.nn.Module):
     """Transient loss module."""
@@ -115,7 +119,11 @@ class TransientLoss(torch.nn.Module):
         x_grad = torch.gradient(x_mag,dim=1)
         y_grad = torch.gradient(y_mag,dim=1)
 
-        return F.mse_loss(x_grad[0], y_grad[0])
+        quantile_grad_y = torch.quantile(torch.abs(y_grad[0]),0.92,dim=2, keepdim=True)[0]
+        max_grad_y = torch.max(torch.abs(y_grad[0]),dim=2, keepdim=True)[0]
+        scale_grad_y = torch.clamp(torch.maximum(quantile_grad_y,max_grad_y/16),5e-2,None)
+
+        return F.mse_loss(x_grad[0]/scale_grad_y, y_grad[0]/scale_grad_y)
 
 
 class STFTLoss(torch.nn.Module):
