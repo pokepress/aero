@@ -35,17 +35,27 @@ def stft(x, fft_size, hop_size, win_length, window, start_interval=0.0, end_inte
         imag[:,int(end_interval*real.shape[1])-1:,:] = 0
 
     # NOTE(kan-bayashi): clamp is needed to avoid nan or inf
-    return torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7)).transpose(2, 1), torch.atan2(imag, real).transpose(2, 1)
+
+    magnitude = torch.sqrt(torch.clamp(real ** 2 + imag ** 2, min=1e-7)).transpose(2, 1)
+    phase = torch.atan2(prevent_zeroes(imag), prevent_zeroes(real)).transpose(2, 1)
+
+    return magnitude, phase
+
+def prevent_zeroes(x: torch.Tensor, threshold=1e-7):
+    y = x.clone()
+    y[(x < threshold) & (x > -1.0 * threshold)] = threshold
+    return y
 
 
 class SpectralConvergengeLoss(torch.nn.Module):
     """Spectral convergence loss module."""
 
-    def __init__(self, magnitude_weight_shift=0.0):
+    def __init__(self, magnitude_weight_shift=0.0, phase_weight=1.0):
         """Initilize spectral convergence loss module."""
         super(SpectralConvergengeLoss, self).__init__()
         self.freq_weights = None
         self.magnitude_weight_shift = magnitude_weight_shift
+        self.phase_weight = phase_weight
 
     def forward(self, x_mag, y_mag, x_phase, y_phase):
         """Calculate forward propagation.
@@ -65,11 +75,13 @@ class SpectralConvergengeLoss(torch.nn.Module):
         else:
             mag_diff = y_mag - x_mag
             
-        mag_conv_loss = torch.mean(torch.linalg.norm(mag_diff, dim=2, keepdim=True) 
-                                   / torch.clamp(torch.linalg.norm(y_mag, dim=2, keepdim=True),1e-2,None))
-        phase_conv_loss = torch.mean(torch.maximum(x_mag,y_mag)*torch.abs(torch.sin((x_phase - y_phase)/2)))
-        
-        return mag_conv_loss + (phase_conv_loss.item()*math.pi)
+        phase_diff = torch.sin((x_phase - y_phase)/2)
+
+        max_diff = torch.maximum(torch.abs(mag_diff), torch.abs(phase_diff) * self.phase_weight *math.pi)
+
+        conv_loss = torch.mean(max_diff*torch.maximum(x_mag,y_mag))
+
+        return conv_loss
 
 
 class LogSTFTMagnitudeLoss(torch.nn.Module):
@@ -88,7 +100,7 @@ class LogSTFTMagnitudeLoss(torch.nn.Module):
         Returns:
             Tensor: Log STFT magnitude loss value.
         """
-        quantile_mag_y = torch.clamp(torch.quantile(y_mag,0.9,dim=2,keepdim=True)[0], 1e-3, None)
+        quantile_mag_y = torch.clamp(torch.quantile(y_mag,0.9,dim=2,keepdim=True)[0], 1e-1, None)
         max_mag_y = torch.max(y_mag,dim=2, keepdim=True)[0]
         scale_mag_y = torch.clamp(torch.maximum(quantile_mag_y,max_mag_y/16),1e-1,None)
 
@@ -129,7 +141,7 @@ class TransientLoss(torch.nn.Module):
 class STFTLoss(torch.nn.Module):
     """STFT loss module."""
 
-    def __init__(self, fft_size=1024, shift_size=120, win_length=600, window="hann_window", start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0):
+    def __init__(self, fft_size=1024, shift_size=120, win_length=600, window="hann_window", start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0, phase_weight=1.0):
         """Initialize STFT loss module."""
         super(STFTLoss, self).__init__()
         self.fft_size = fft_size
@@ -137,7 +149,7 @@ class STFTLoss(torch.nn.Module):
         self.win_length = win_length
         self.register_buffer("window", getattr(torch, window)(win_length))
         self.magnitude_weight_shift = magnitude_weight_shift
-        self.spectral_convergenge_loss = SpectralConvergengeLoss(magnitude_weight_shift)
+        self.spectral_convergenge_loss = SpectralConvergengeLoss(magnitude_weight_shift, phase_weight)
         self.log_stft_magnitude_loss = LogSTFTMagnitudeLoss(magnitude_weight_shift)
         self.transient_loss = TransientLoss()
         self.start_interval = start_interval
@@ -158,6 +170,12 @@ class STFTLoss(torch.nn.Module):
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
         trans_loss = self.transient_loss(x_mag, y_mag)
 
+        if torch.isnan(sc_loss) or torch.isnan(mag_loss) or torch.isnan(trans_loss):
+            raise ValueError("Got NaN from STFT Loss: sc: " +
+                             str(torch.isnan(sc_loss).item()) + " mag: " +
+                             str(torch.isnan(mag_loss).item()) + " trans: " +
+                             str(torch.isnan(trans_loss).item()))
+
         return sc_loss, mag_loss, trans_loss
 
 
@@ -169,7 +187,8 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
                  hop_sizes=[127, 307, 241, 401, 547, 577],
                  win_lengths=[601, 1399, 1249, 4999, 1601, 5167],
                  window="hann_window", factor_sc=0.1, factor_mag=0.1, factor_trans=0.1,
-                 start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0):
+                 start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0,
+                 phase_weight=1.0):
         """Initialize Multi resolution STFT loss module.
         Args:
             fft_sizes (list): List of FFT sizes.
@@ -180,13 +199,15 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
             start_interval (float): where to start (between 0 hz and the nyquist frequency)
             end_interval (float): where to end (between 0 hz and the nyquist frequency)
             magnitude_weight_shift (float): if non-zero, increases loss for predicted magnititudes that are too low (positive) or high (negative)
+            phase_weight (float):  weight of phase portion of spectral convergence loss
         """
         super(MultiResolutionSTFTLoss, self).__init__()
         assert len(fft_sizes) == len(hop_sizes) == len(win_lengths)
         assert magnitude_weight_shift > -1.0, magnitude_weight_shift < 1.0
+        assert phase_weight >= 0.0
         self.stft_losses = torch.nn.ModuleList()
         for fs, ss, wl in zip(fft_sizes, hop_sizes, win_lengths):
-            self.stft_losses += [STFTLoss(fs, ss, wl, window, start_interval, end_interval, magnitude_weight_shift)]
+            self.stft_losses += [STFTLoss(fs, ss, wl, window, start_interval, end_interval, magnitude_weight_shift, phase_weight)]
         self.factor_sc = factor_sc
         self.factor_mag = factor_mag
         self.factor_trans = factor_trans
