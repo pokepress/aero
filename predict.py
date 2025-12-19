@@ -58,7 +58,7 @@ def main(args):
     model.cuda()
     filename = args.filename
     file_basename = Path(filename).stem
-    output_dir = args.output
+    output_dir = args.output if 'output' in args else os.path.dirname(filename)
     lr_sig, sr = torchaudio.load(str(filename))
 
     if args.experiment.upsample:
