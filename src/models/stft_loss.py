@@ -77,9 +77,18 @@ class SpectralConvergengeLoss(torch.nn.Module):
             
         phase_diff = torch.sin((x_phase - y_phase)/2)
 
-        max_diff = torch.maximum(torch.abs(mag_diff), torch.abs(phase_diff) * self.phase_weight *math.pi)
+        avg_phase_diff = torch.mean(phase_diff.transpose(1,2), dim=2,keepdim=True)
+        phase_diff_deviation = phase_diff - avg_phase_diff.transpose(1,2)
 
-        conv_loss = torch.mean(max_diff*torch.maximum(x_mag,y_mag))
+        max_diff = torch.maximum(torch.abs(mag_diff), torch.abs(phase_diff_deviation) * self.phase_weight *math.pi)
+        avg_diff = (mag_diff+phase_diff_deviation)/2
+
+        quantile_mag_y = torch.clamp(torch.quantile(y_mag,0.9,dim=2,keepdim=True)[0], 1e-1, None)
+        max_mag_y = torch.max(y_mag,dim=2, keepdim=True)[0]
+        scale_mag_y = torch.clamp(torch.maximum(quantile_mag_y,max_mag_y/16),1e-1,None)
+        scaled_diff = (((2*max_diff)+avg_diff)/3)/scale_mag_y
+
+        conv_loss = torch.mean(pow(scaled_diff,1.3)*torch.maximum(x_mag,y_mag))
 
         return conv_loss
 

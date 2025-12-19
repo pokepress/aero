@@ -7,7 +7,7 @@ defaults:
 # Logging and printing, and does not impact training
 num_prints: 5
 device: cuda
-num_workers: 2
+num_workers: 1
 verbose: 0
 show: 0   # just show the model and its size and exit
 
