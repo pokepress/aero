@@ -85,7 +85,7 @@ class LrHrSet(Dataset):
     def __init__(self, json_dir, lr_sr, hr_sr, stride=None, segment=None,
                  pad=True, with_path=False, stft=False, win_len=64, hop_len=16, n_fft=4096, complex_as_channels=True,
                  upsample=True, channels=1, vary_volume=False, randomize_phase=False, swap_channels=False,
-                 mixup=False):
+                 mixup=False, lowpass_lr=False, highpass_lr=False):
         """__init__.
         :param json_dir: directory containing both hr.json and lr.json
         :param stride: the stride used for splitting audio sequences in seconds
@@ -104,6 +104,8 @@ class LrHrSet(Dataset):
         self.lr_sr = lr_sr
         self.hr_sr = hr_sr
         self.stft = stft
+        self.lowpass_lr = lowpass_lr
+        self.highpass_lr = highpass_lr
         self.with_path = with_path
         self.upsample = upsample
         self.vary_volume = vary_volume
@@ -159,6 +161,10 @@ class LrHrSet(Dataset):
             volumeAdjustment = torchaudio.transforms.Vol(random.uniform(0.5, 1))
             hr_sig = volumeAdjustment(hr_sig)
             lr_sig = volumeAdjustment(lr_sig)
+        if self.lowpass_lr and random.randint(0, 2) == 2:
+            lr_sig = torchaudio.functional.lowpass_biquad(lr_sig, self.lr_sr, random.uniform(self.lr_sr/2, self.lr_sr/4), random.uniform(.6, .999))
+        if self.highpass_lr and random.randint(0, 2) == 2:
+            lr_sig = torchaudio.functional.highpass_biquad(lr_sig, self.lr_sr, random.uniform(self.lr_sr/200, 0), random.uniform(.6, .999))
         if self.randomize_phase and random.randint(0, 1) == 1:
             hr_sig*=-1
             lr_sig*=-1

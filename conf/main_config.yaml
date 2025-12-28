@@ -18,6 +18,8 @@ vary_volume: true
 randomize_phase: true
 swap_channels: true # Stereo only
 mixup: true
+lowpass_lr: false
+highpass_lr: false
 
 # Checkpointing, by default automatically load last checkpoint
 checkpoint: true
