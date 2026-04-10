@@ -6,10 +6,10 @@ HyperPyYAML==1.0.0
 numpy
 opencv-python
 soundfile==0.12.1
-soundfile
 sox
-torch==2.4.1
-torchvision==0.19.1
-torchaudio==2.4.1
+#torch==2.9.0
+#torchvision==0.24.0
+#torchaudio==2.9.0
+torchcodec
 tqdm
 wandb

@@ -1,13 +1,10 @@
-import sox
 import os
-import sys
 import argparse
 import glob
-import torchaudio
+from torchcodec.decoders import AudioDecoder
 from collections import namedtuple
 import json
 from multiprocessing import Process, Manager
-import pathlib
 
 FILE_PATTERN='*_mic1.wav'
 TOTAL_N_SPEAKERS=108
@@ -18,13 +15,12 @@ Info = namedtuple("Info", ["length", "sample_rate", "channels"])
 
 
 def get_info(path):
-    info = torchaudio.info(path)
-    if hasattr(info, 'num_frames'):
-        # new version of torchaudio
-        return Info(info.num_frames, info.sample_rate, info.num_channels)
+    audio_data = AudioDecoder(path)
+    if hasattr(audio_data.metadata, 'sample_rate'):
+        return Info(int(audio_data.metadata.sample_rate * audio_data.metadata.duration_seconds), audio_data.metadata.sample_rate, audio_data.metadata.num_channels)
     else:
-        siginfo = info[0]
-        return Info(siginfo.length // siginfo.channels, siginfo.rate, siginfo.channels)
+        siginfo = audio_data.get_all_samples()
+        return Info(len(siginfo.data)[1], siginfo.sample_rate, len(siginfo.data)[0])
 
 
 def add_subdir_meta(subdir_path, shared_meta, n_samples_limit):

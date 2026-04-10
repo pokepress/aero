@@ -15,10 +15,10 @@ def get_estimate(model, lr_sig):
     return out
 
 
-def write(wav, filename, sr):
+def write(wav, filename: str, sr, bitrate=128):
     # Normalize audio if it prevents clipping
     wav = wav / max(wav.abs().max().item(), 1)
-    torchaudio.save(filename, wav.cpu(), sr)
+    torchaudio.save(filename, wav.cpu(), sr, compression=bitrate if filename.endswith(".mp3") else None)
 
 
 def save_wavs(processed_sigs, lr_sigs, hr_sigs, filenames, lr_sr, hr_sr):

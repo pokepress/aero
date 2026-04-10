@@ -10,7 +10,13 @@ Checkpoint files are available! Details below.
 Install requirements specified in `requirements.txt`:  
 ```pip install -r requirements.txt```
 
-We ran our code on CUDA/11.8, we therefore installed pytorch/torchvision/torchaudio with the following:
+We ran our code on CUDA/12.6, we therefore installed pytorch/torchvision/torchaudio (2.9.0 or later) with the following:
+
+```
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
+Older GPUs (Pascal and prior) may need:
 
 ```
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -139,10 +145,11 @@ from [here](https://drive.google.com/drive/folders/1KuVJNkR7lZddvufmNsx-uAIluvb5
 
 Thank you for [@fmac2000](https://github.com/fmac2000) for providing checkpoints for the 16->48 kHz configuration! They are now included in the provided checkpoint folder.
 
-## Additional models for this modified project
+## Additional models/tools for this modified project
 
 [AM Radio Super Resolution](https://www.mediafire.com/folder/orqm1wxjyikjp/test-v1)
 [FM Radio Super Resolution](https://huggingface.co/sereich/FMRadioSR)
+[Broadcast Audio Upscaling](https://huggingface.co/spaces/sereich/BroadcastAudioUpscaling)
 
 To link to checkpoint when testing or predicting, override/set path under `checkpoint_file:<path>`
 in `conf/main_config.yaml.`  
