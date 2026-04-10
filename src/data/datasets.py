@@ -17,6 +17,7 @@ from torch.utils.data import Dataset
 from torchaudio.transforms import Spectrogram
 
 from src.data.audio import Audioset
+from src.enhance import write
 from src.utils import match_signal
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class LrHrSet(Dataset):
     def __init__(self, json_dir, lr_sr, hr_sr, stride=None, segment=None,
                  pad=True, with_path=False, stft=False, win_len=64, hop_len=16, n_fft=4096, complex_as_channels=True,
                  upsample=True, channels=1, vary_volume=False, randomize_phase=False, swap_channels=False,
-                 mixup=False, lowpass_lr=False, highpass_lr=False):
+                 mixup=False, lowpass_lr=False, highpass_lr=False, compression=False):
         """__init__.
         :param json_dir: directory containing both hr.json and lr.json
         :param stride: the stride used for splitting audio sequences in seconds
@@ -112,6 +113,7 @@ class LrHrSet(Dataset):
         self.randomize_phase = randomize_phase
         self.swap_channels = swap_channels
         self.mixup = mixup
+        self.compression = compression
 
         if self.stft:
             self.window_length = int(self.hr_sr / 1000 * win_len)  # 64 ms
@@ -158,7 +160,7 @@ class LrHrSet(Dataset):
             lr_sig = resample(lr_sig, self.lr_sr, self.hr_sr)
             lr_sig = match_signal(lr_sig, hr_sig.shape[-1])
         if self.vary_volume:
-            volumeAdjustment = torchaudio.transforms.Vol(random.uniform(0.5, 1))
+            volumeAdjustment = torchaudio.transforms.Vol(random.uniform(0.5, 0.99))
             hr_sig = volumeAdjustment(hr_sig)
             lr_sig = volumeAdjustment(lr_sig)
         if self.lowpass_lr and random.randint(0, 2) == 2:
@@ -182,6 +184,12 @@ class LrHrSet(Dataset):
             lr_mixed = torch.add(lr_sig * mix_ratio, (1-mix_ratio)*self.lr_set[mix_index])
             hr_sig=hr_mixed
             lr_sig=lr_mixed
+        if self.compression and random.randint(0, 3) == 3:
+            lr_sig = torch.nan_to_num(lr_sig, nan=1e-8)
+            extension = random.choice([".mp3", ".ogg"])
+            write(lr_sig, "temp"+str(index)+extension, self.lr_sr, bitrate=random.choice([96, 128, 160]))
+            lr_sig = torchaudio.load("temp"+str(index)+extension)[0]
+            os.remove("temp"+str(index)+extension)
 
 
         if self.stft:

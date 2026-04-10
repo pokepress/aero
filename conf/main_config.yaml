@@ -20,6 +20,7 @@ swap_channels: true # Stereo only
 mixup: true
 lowpass_lr: false
 highpass_lr: false
+compression: false
 
 # Checkpointing, by default automatically load last checkpoint
 checkpoint: true
