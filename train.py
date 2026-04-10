@@ -62,7 +62,7 @@ def run(args):
                          args.experiment.stride, args.experiment.segment, upsample=args.experiment.upsample,
                          channels=channels, vary_volume=args.vary_volume, randomize_phase=args.randomize_phase,
                          swap_channels=args.swap_channels, mixup=args.mixup, lowpass_lr=args.lowpass_lr,
-                         highpass_lr=args.highpass_lr)
+                         highpass_lr=args.highpass_lr, compression=args.compression)
     tr_loader = distrib.loader(tr_dataset, batch_size=args.experiment.batch_size, shuffle=True,
                                num_workers=args.num_workers)
 
