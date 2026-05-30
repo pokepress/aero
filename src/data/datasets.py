@@ -187,7 +187,7 @@ class LrHrSet(Dataset):
         if self.compression and random.randint(0, 3) == 3:
             lr_sig = torch.nan_to_num(lr_sig, nan=1e-8)
             extension = random.choice([".mp3", ".ogg"])
-            write(lr_sig, "temp"+str(index)+extension, self.lr_sr, bitrate=random.choice([96, 128, 160]))
+            write(lr_sig, "temp"+str(index)+extension, self.lr_sr, bitrate=random.choice([96, 128, 160, 192]))
             lr_sig = torchaudio.load("temp"+str(index)+extension)[0]
             os.remove("temp"+str(index)+extension)
 

@@ -32,7 +32,7 @@ class HEncLayer(nn.Module):
     def __init__(self, chin, chout, kernel_size=8, stride=4, norm_groups=1, empty=False,
                  freq=True, dconv=True, is_first=False, freq_attn=False, freq_dim=None, norm=True, context=0,
                  dconv_kw={}, pad=True,
-                 rewrite=True):
+                 rewrite=True, widen_kernel=False):
         """Encoder layer. This used both by the time and the frequency branch.
 
         Args:
@@ -65,20 +65,22 @@ class HEncLayer(nn.Module):
         self.chout = chout
         self.freq = freq
         self.kernel_size = kernel_size
+        self.widen_kernel = widen_kernel
         self.stride = stride
         self.empty = empty
         self.freq_attn = freq_attn
         self.freq_dim = freq_dim
         self.norm = norm
         self.pad = pad
+        kernel_width = 3 if self.widen_kernel else 1 
         if freq:
-            kernel_size = [kernel_size, 1]
+            kernel_size = [kernel_size, kernel_width]
             stride = [stride, 1]
             if pad != 0:
                 pad = [pad, 0]
             # klass = nn.Conv2d
         else:
-            kernel_size = [1, kernel_size]
+            kernel_size = [kernel_width, kernel_size]
             stride = [1, stride]
             if pad != 0:
                 pad = [0, pad]
@@ -138,7 +140,7 @@ class HEncLayer(nn.Module):
 class HDecLayer(nn.Module):
     def __init__(self, chin, chout, last=False, kernel_size=8, stride=4, norm_groups=1, empty=False,
                  freq=True, dconv=True, norm=True, context=1, dconv_kw={}, pad=True,
-                 context_freq=True, rewrite=True):
+                 context_freq=True, rewrite=True, widen_kernel=False):
         """
         Same as HEncLayer but for decoder. See `HEncLayer` for documentation.
         """
@@ -159,15 +161,17 @@ class HDecLayer(nn.Module):
         self.empty = empty
         self.stride = stride
         self.kernel_size = kernel_size
+        self.widen_kernel = widen_kernel
         self.norm = norm
         self.context_freq = context_freq
         klass = nn.Conv2d
         klass_tr = nn.ConvTranspose2d
+        kernel_width = 3 if self.widen_kernel else 1 
         if freq:
-            kernel_size = [kernel_size, 1]
+            kernel_size = [kernel_size, kernel_width]
             stride = [stride, 1]
         else:
-            kernel_size = [1, kernel_size]
+            kernel_size = [kernel_width, kernel_size]
             stride = [1, stride]
         self.conv_tr = klass_tr(chin, chout, kernel_size, stride)
         self.norm2 = norm_fn(chout)
@@ -265,7 +269,8 @@ class Aero(nn.Module):
                  hr_sr=16000,
                  spec_upsample=True,
                  act_func='snake',
-                 debug=False):
+                 debug=False,
+                 widen_kernel=False):
         """
         Args:
             sources (list[str]): list of source names.
@@ -313,6 +318,7 @@ class Aero(nn.Module):
         self.out_channels = out_channels
         self.audio_channels = audio_channels
         self.kernel_size = kernel_size
+        self.widen_kernel = widen_kernel
         self.context = context
         self.strides = strides
         self.depth = len(strides)
@@ -335,6 +341,8 @@ class Aero(nn.Module):
         self.encoder = nn.ModuleList()
         self.decoder = nn.ModuleList()
 
+        self.dropout = nn.Dropout(p=0.2)
+
         chin_z = self.in_channels
         if self.cac:
             chin_z *= 2
@@ -349,6 +357,7 @@ class Aero(nn.Module):
             freq = index <= freq_ends
             stri = strides[index]
             ker = kernel_size
+            wid_ker = widen_kernel
 
             pad = True
             if freq and freqs < kernel_size:
@@ -356,6 +365,7 @@ class Aero(nn.Module):
 
             kw = {
                 'kernel_size': ker,
+                'widen_kernel': wid_ker,
                 'stride': stri,
                 'freq': freq,
                 'pad': pad,
@@ -479,6 +489,7 @@ class Aero(nn.Module):
                 emb = self.freq_emb(frs).t()[None, :, :, None].expand_as(x)
                 x = x + self.freq_emb_scale * emb
 
+            x = self.dropout(x)
             saved.append(x)
 
         x = torch.zeros_like(x)
@@ -486,6 +497,8 @@ class Aero(nn.Module):
 
         for idx, decode in enumerate(self.decoder):
             skip = saved.pop(-1)
+            skip = self.dropout(skip)
+            x = self.dropout(x)
             x = decode(x, skip, lengths.pop(-1))
 
             if self.debug:
