@@ -491,6 +491,14 @@ class Solver(object):
                     hr_channel_diff = hr_time[:,0]-hr_time[:,1]
                     stereo_loss = self.stereo_loss_factor * torch.mean(abs((pr_channel_diff - hr_channel_diff) /2))
                     losses['generator'].update({'stereo': stereo_loss})
+                if 'stereofuzzy' in self.args.losses and self.channels == 2:
+                    pr_channel_diff = pr_time[:,0]-pr_time[:,1]
+                    hr_channel_diff = hr_time[:,0]-hr_time[:,1]
+                    segment_count =  int(pr_channel_diff.shape[1]/1000)*pr_channel_diff.shape[0]
+                    pr_channel_diff_binned = torch.stack([bin.mean() for bin in torch.torch.split(torch.abs(pr_channel_diff), segment_count, dim=1)])
+                    hr_channel_diff_binned = torch.stack([bin.mean() for bin in torch.torch.split(torch.abs(hr_channel_diff), segment_count, dim=1)])
+                    stereo_loss = self.stereo_loss_factor * torch.mean(abs((pr_channel_diff_binned - hr_channel_diff_binned) /2))
+                    losses['generator'].update({'stereofuzzy': stereo_loss})
 
             if self.adversarial_mode:
                 if 'msd_melgan' in self.args.experiment.discriminator_models:

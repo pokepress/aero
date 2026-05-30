@@ -173,8 +173,14 @@ class STFTLoss(torch.nn.Module):
             Tensor: Spectral convergence loss value.
             Tensor: Log STFT magnitude loss value.
         """
-        x_mag, x_phase = stft(x, self.fft_size, self.shift_size, self.win_length, self.window, self.start_interval, self.end_interval)
-        y_mag, y_phase = stft(y, self.fft_size, self.shift_size, self.win_length, self.window, self.start_interval, self.end_interval)
+        fft_variance = int(self.fft_size/50)
+        fft_adj = random.randint(-fft_variance, fft_variance)
+        shift_variance = int(self.shift_size/10)
+        shift_adj = random.randint(-shift_variance, shift_variance)
+        #can't randomize window length due to buffer reg in __init__
+
+        x_mag, x_phase = stft(x, self.fft_size + fft_adj, self.shift_size + shift_adj, self.win_length, self.window, self.start_interval, self.end_interval)
+        y_mag, y_phase = stft(y, self.fft_size + fft_adj, self.shift_size + shift_adj, self.win_length, self.window, self.start_interval, self.end_interval)
         sc_loss = self.spectral_convergenge_loss(x_mag, y_mag, x_phase, y_phase)
         mag_loss = self.log_stft_magnitude_loss(x_mag, y_mag)
         trans_loss = self.transient_loss(x_mag, y_mag)
@@ -192,9 +198,9 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
     """Multi resolution STFT loss module."""
 
     def __init__(self,
-                 fft_sizes=[1531, 2557, 4099, 4999, 3001, 6037],
-                 hop_sizes=[127, 307, 241, 401, 547, 577],
-                 win_lengths=[601, 1399, 1249, 4999, 1601, 5167],
+                 fft_sizes=[1531, 2557, 521],
+                 hop_sizes=[149, 307, 91],
+                 win_lengths=[601, 1399, 247],
                  window="hann_window", factor_sc=0.1, factor_mag=0.1, factor_trans=0.1,
                  start_interval=0.0, end_interval=1.0, magnitude_weight_shift=0.0,
                  phase_weight=1.0):
