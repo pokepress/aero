@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import torchaudio.transforms
+from torchaudio.functional import resample
 
 from src.ddp import distrib
 from src.data.datasets import PrHrSet, match_signal
@@ -95,18 +96,23 @@ class Solver(object):
         self.msd_loss_factor = args.msd_loss_factor if 'msd_loss_factor' in args else 1
         self.mpd_loss_factor = args.mpd_loss_factor if 'mpd_loss_factor' in args else 1
         self.stereo_loss_factor = args.stereo_loss_factor if 'stereo_loss_factor' in args else 1
+        self.lr_penalty = args.lr_penalty if 'lr_penalty' in args else 1.0
 
         self.floatFormat = torch.bfloat16 if torch.cuda.is_bf16_supported() and not args.force_float32 else torch.float32
 
         if 'stft' in self.args.losses:
             self.mrstftloss = MultiResolutionSTFTLoss(factor_sc=args.stft_sc_factor,
                                                   factor_mag=args.stft_mag_factor,magnitude_weight_shift=args.stft_mag_weight_shift,
-                                                  factor_trans=args.stft_trans_factor, phase_weight=args.stft_phase_weight).to(self.device)
+                                                  factor_trans=args.stft_trans_factor, phase_weight=args.stft_phase_weight,
+                                                  generator_fft_size=self.args.experiment.nfft, hr_sr=self.args.experiment.hr_sr,
+                                                  lr_penalty=self.lr_penalty).to(self.device)
         if 'stftcustom' in self.args.losses:
             self.mrstftlosscustom = MultiResolutionSTFTLoss(factor_sc=args.stft_sc_factor,
                                                   factor_mag=args.stft_mag_factor,start_interval=args.stftcustom_start,
                                                   end_interval=args.stftcustom_end,magnitude_weight_shift=args.stft_mag_weight_shift,
-                                                  factor_trans=args.stft_trans_factor, phase_weight=args.stft_phase_weight).to(self.device)
+                                                  factor_trans=args.stft_trans_factor, phase_weight=args.stft_phase_weight,
+                                                  generator_fft_size=self.args.experiment.nfft, hr_sr=self.args.experiment.hr_sr,
+                                                  lr_penalty=self.lr_penalty).to(self.device)
 
         if 'discriminator_model' in self.args.experiment and \
                 self.args.experiment.discriminator_model == 'hifi':
@@ -346,7 +352,7 @@ class Solver(object):
                     hr_reprs = {'time': hr}
                     pr_reprs = {'time': pr_time}
 
-                losses = self._get_losses(hr_reprs, pr_reprs, optimize_generator_this_batch)
+                losses = self._get_losses(hr_reprs, pr_reprs, {'time': lr}, optimize_generator_this_batch)
                 
                 if (optimize_generator_this_batch):
                     for loss_name, loss in losses['generator'].items():
@@ -432,7 +438,7 @@ class Solver(object):
             hr_reprs = {'time': hr, 'spec': hr_spec}
             pr_reprs = {'time': pr_time, 'spec': pr_spec}
 
-            losses = self._get_losses(hr_reprs, pr_reprs)
+            losses = self._get_losses(hr_reprs, pr_reprs, {'time': lr})
             total_generator_loss = 0
             for loss_name, loss in losses['generator'].items():
                 total_generator_loss += loss
@@ -464,9 +470,13 @@ class Solver(object):
         return avg_losses, total_filenames if enhance else None
 
 
-    def _get_losses(self, hr, pr, get_generator_losses = True):
+    def _get_losses(self, hr, pr, lr, get_generator_losses = True):
         hr_time = hr['time']
         pr_time = pr['time']
+        lr_time = lr['time']
+
+        if hr_time.shape != lr_time.shape:
+            lr_time = resample(lr_time, self.args.lr_sr, self.args.hr_sr)
 
         losses = {'generator': {}, 'discriminator': {}}
         with torch.autograd.set_detect_anomaly(True):
@@ -481,10 +491,10 @@ class Solver(object):
                     dc_loss = self.dc_offset_loss_factor * abs((pr_offset - hr_offset) / 2) #max loss is -1 to 1
                     losses['generator'].update({'dc_offset': dc_loss })
                 if 'stft' in self.args.losses:
-                    stft_loss = self._get_stft_loss(pr_time, hr_time)
+                    stft_loss = self._get_stft_loss(pr_time, hr_time, lr_time)
                     losses['generator'].update({'stft': stft_loss})
                 if 'stftcustom' in self.args.losses:
-                    stftcustom_loss = self._get_stftcustom_loss(pr_time, hr_time)
+                    stftcustom_loss = self._get_stftcustom_loss(pr_time, hr_time, lr_time)
                     losses['generator'].update({'stftcustom': stftcustom_loss})
                 if 'stereo' in self.args.losses and self.channels == 2:
                     pr_channel_diff = pr_time[:,0]-pr_time[:,1]
@@ -497,7 +507,13 @@ class Solver(object):
                     segment_count =  int(pr_channel_diff.shape[1]/1000)*pr_channel_diff.shape[0]
                     pr_channel_diff_binned = torch.stack([bin.mean() for bin in torch.torch.split(torch.abs(pr_channel_diff), segment_count, dim=1)])
                     hr_channel_diff_binned = torch.stack([bin.mean() for bin in torch.torch.split(torch.abs(hr_channel_diff), segment_count, dim=1)])
-                    stereo_loss = self.stereo_loss_factor * torch.mean(abs((pr_channel_diff_binned - hr_channel_diff_binned) /2))
+                    stereo_loss = self.stereo_loss_factor * torch.mean(abs((pr_channel_diff_binned - hr_channel_diff_binned)))
+                    if self.lr_penalty > 1:
+                        lr_channel_diff = lr_time[:,0]-lr_time[:,1]
+                        lr_channel_diff_binned = torch.stack([bin.mean() for bin in torch.torch.split(torch.abs(lr_channel_diff), segment_count, dim=1)])
+                        lr_stereo_loss =  self.stereo_loss_factor * torch.mean(abs((lr_channel_diff_binned - hr_channel_diff_binned)))
+                        penalty_stereo_loss = torch.where(stereo_loss > lr_stereo_loss, stereo_loss * self.lr_penalty, stereo_loss)
+                        stereo_loss = penalty_stereo_loss
                     losses['generator'].update({'stereofuzzy': stereo_loss})
 
             if self.adversarial_mode:
@@ -528,18 +544,20 @@ class Solver(object):
                     losses['discriminator'].update({'hifi': discriminator_loss})
         return losses
 
-    def _get_stft_loss(self, pr, hr):
+    def _get_stft_loss(self, pr, hr, lr):
         sc_loss, mag_loss, trans_loss = self.mrstftloss(
-            pr.reshape([pr.shape[0], pr.shape[1] * pr.shape[2]]), 
-            hr.reshape([hr.shape[0], hr.shape[1] * hr.shape[2]])
+            pr.reshape([pr.shape[0] * pr.shape[1], pr.shape[2]]), 
+            hr.reshape([hr.shape[0] * hr.shape[1], hr.shape[2]]),
+            lr.reshape([lr.shape[0] * lr.shape[1], lr.shape[2]])
             )
         stft_loss = sc_loss + mag_loss + trans_loss
         return stft_loss
     
-    def _get_stftcustom_loss(self, pr, hr):
+    def _get_stftcustom_loss(self, pr, hr, lr):
         sc_loss, mag_loss, trans_loss = self.mrstftlosscustom(
-            pr.reshape([pr.shape[0], pr.shape[1] * pr.shape[2]]), 
-            hr.reshape([hr.shape[0], hr.shape[1] * hr.shape[2]])
+            pr.reshape([pr.shape[0] * pr.shape[1], pr.shape[2]]), 
+            hr.reshape([hr.shape[0] * hr.shape[1], hr.shape[2]]),
+            lr.reshape([lr.shape[0] * lr.shape[1], lr.shape[2]])
             )
         stftcustom_loss = sc_loss + mag_loss + trans_loss
         return stftcustom_loss
